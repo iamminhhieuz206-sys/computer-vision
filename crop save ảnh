@@ -1,0 +1,76 @@
+import cv2
+import os
+import numpy as np
+
+# =================== CẤU HÌNH ===================
+INPUT_DIR = r"D:\data container\ảnh đã crop"      # Folder chứa ảnh gốc
+OUTPUT_DIR = r"D:\data container\digit_data"   # Folder lưu ảnh crop
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+ref_point = []
+cropping = False
+crop_count = 0  # Đếm số crop trong mỗi ảnh
+
+# =================== HÀM CLICK ===================
+def click_and_crop(event, x, y, flags, param):
+    global ref_point, cropping, image, clone
+    if event == cv2.EVENT_LBUTTONDOWN:
+        ref_point = [(x, y)]
+        cropping = True
+    elif event == cv2.EVENT_LBUTTONUP:
+        ref_point.append((x, y))
+        cropping = False
+        # Vẽ rectangle tạm thời
+        cv2.rectangle(image, ref_point[0], ref_point[1], (0, 255, 0), 2)
+        cv2.imshow("image", image)
+
+# =================== XỬ LÝ TỪNG ẢNH ===================
+for filename in os.listdir(INPUT_DIR):
+    if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        path = os.path.join(INPUT_DIR, filename)
+        
+        # Đọc ảnh an toàn với đường dẫn tiếng Việt
+        try:
+            with open(path, 'rb') as f:
+                file_bytes = np.asarray(bytearray(f.read()), dtype=np.uint8)
+                image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        except:
+            print(f"⚠️ Không đọc được ảnh: {filename}")
+            continue
+
+        if image is None:
+            print(f"⚠️ Không đọc được ảnh: {filename}")
+            continue
+
+        clone = image.copy()
+        cv2.namedWindow("image")
+        cv2.setMouseCallback("image", click_and_crop)
+        crop_count = 0
+
+        while True:
+            cv2.imshow("image", image)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("r"):  # Reset vùng crop hiện tại
+                image = clone.copy()
+                print("🔄 Reset vùng crop hiện tại")
+            elif key == ord("s"):  # Lưu vùng crop
+                if len(ref_point) == 2:
+                    roi = clone[ref_point[0][1]:ref_point[1][1],
+                                ref_point[0][0]:ref_point[1][0]]
+                    save_name = f"{os.path.splitext(filename)[0]}_crop{crop_count}.png"
+                    save_path = os.path.join(OUTPUT_DIR, save_name)
+                    cv2.imwrite(save_path, roi)
+                    print(f"✅ Đã lưu: {save_path}")
+                    crop_count += 1
+                    ref_point = []  # reset vùng crop sau khi lưu
+                    image = clone.copy()  # xóa rectangle vẽ trước đó
+            elif key == ord("n"):  # Chuyển sang ảnh tiếp theo
+                print(f"⏭ Chuyển sang ảnh tiếp theo: {filename}")
+                break
+            elif key == ord("q"):  # Bỏ qua ảnh
+                print(f"⏩ Bỏ qua ảnh: {filename}")
+                break
+
+cv2.destroyAllWindows()
+print("🎉 Hoàn tất crop tất cả ảnh!")
