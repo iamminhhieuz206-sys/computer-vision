@@ -1,0 +1,70 @@
+import cv2
+import os
+import numpy as np
+
+INPUT_DIR = r"D:\data container\src\processed_data"
+OUTPUT_DIR = "edge"
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+if not os.path.isdir(INPUT_DIR):
+    print(f"Lỗi: Thư mục không tồn tại {INPUT_DIR}")
+else:
+    for fname in os.listdir(INPUT_DIR):
+        if not fname.lower().endswith(('.jpg', '.png', '.jpeg')):
+            continue
+
+        input_image_path = os.path.join(INPUT_DIR, fname)
+        img = cv2.imread(input_image_path)
+
+        if img is None:
+            print(f"Lỗi: Không đọc được hình ảnh tại {input_image_path}")
+            continue
+
+        # Tăng kích thước ảnh để OCR tốt hơn
+        scale_factor = 2
+        img_resized = cv2.resize(img, None, fx=scale_factor, fy=scale_factor, 
+                                  interpolation=cv2.INTER_CUBIC)
+
+        # Chuyển sang grayscale
+        gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
+
+        # Khử nhiễu trước khi xử lý
+        denoised = cv2.fastNlMeansDenoising(gray, None, h=10, templateWindowSize=7, 
+                                             searchWindowSize=21)
+
+        # CLAHE để tăng độ tương phản
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        contrast_enhanced = clahe.apply(denoised)
+
+        # Adaptive threshold tốt hơn cho text
+        binary = cv2.adaptiveThreshold(
+            contrast_enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 11, 2
+        )
+
+        # Làm sạch nhiễu nhỏ
+        kernel_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_clean, iterations=1)
+
+        # Làm đậm chữ một chút
+        kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        text_enhanced = cv2.dilate(cleaned, kernel_dilate, iterations=1)
+
+        # Sharpen để chữ rõ hơn
+        kernel_sharpen = np.array([[-1,-1,-1],
+                                   [-1, 9,-1],
+                                   [-1,-1,-1]])
+        sharpened = cv2.filter2D(text_enhanced, -1, kernel_sharpen)
+
+        # Chuyển về BGR để lưu
+        output = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
+
+        base_name = os.path.splitext(os.path.basename(input_image_path))[0]
+        output_filename = base_name + ".jpg"
+        cv2.imwrite(os.path.join(OUTPUT_DIR, output_filename), output, 
+                    [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+        print(f"✓ Đã xử lý: {output_filename}")
+
+print("\n✅ Hoàn tất!")
